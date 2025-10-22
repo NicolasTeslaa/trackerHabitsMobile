@@ -1,103 +1,91 @@
 import Colors from '@/constants/Colors';
+import { createHabit, deleteHabit, listHabits, toggleToday, type Habit } from '@/services/habits.service';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
-import { Pressable, View as RNView, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
-
-type Habit = {
-  id: string;
-  name: string;
-  monthCount: number;
-  streak: number;
-  total: number;
-  monthProgressPct: number; // 0..1
-  lastDate: string;
-  dueToday: boolean;
-};
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  View as RNView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useColorScheme,
+  View,
+} from 'react-native';
 
 export default function TabOneScreen() {
   const scheme = useColorScheme() ?? 'light';
   const C = Colors[scheme];
-  const styles = createStyles(C, scheme);
+  const styles = createStyles(C);
 
-  // estado básico de filtro/ordenar e dados mock
+  // filtros
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'all' | 'today' | 'done'>('all');
   const [order, setOrder] = useState<'streak' | 'name' | 'month'>('streak');
 
-  const [habits, setHabits] = useState<Habit[]>([
-    {
-      id: '1',
-      name: 'Academia',
-      monthCount: 7,
-      streak: 0,
-      total: 45,
-      monthProgressPct: 0.23,
-      lastDate: '13/10/2025',
-      dueToday: true,
-    },
-  ]);
+  // dados
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // carregar lista inicial e sempre que filtros mudarem (opcional)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      const data = await listHabits({ tab, orderBy: order });
+      if (alive) setHabits(data);
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [tab, order]);
 
   const kpis = useMemo(() => {
     const ativos = habits.length;
-    const hoje = habits.filter(h => h.dueToday).length;
+    const hoje = habits.filter(h => h.dueToday === true).length;
     const noMes = habits.reduce((acc, h) => acc + h.monthCount, 0);
     const taxa30d = 0.16; // mock
     return { noMes, hoje, ativos, taxa30d };
   }, [habits]);
 
   const filtered = useMemo(() => {
+    const today = todayStr();
     let arr = habits.filter(h =>
       h.name.toLowerCase().includes(query.trim().toLowerCase()),
     );
     if (tab === 'today') arr = arr.filter(h => h.dueToday);
-    if (tab === 'done') arr = []; // regra real de "concluídos hoje" entra aqui
+    if (tab === 'done') arr = arr.filter(h => !h.dueToday && h.lastDate === today);
     if (order === 'streak') arr = [...arr].sort((a, b) => b.streak - a.streak);
     if (order === 'name') arr = [...arr].sort((a, b) => a.name.localeCompare(b.name));
     if (order === 'month') arr = [...arr].sort((a, b) => b.monthCount - a.monthCount);
     return arr;
   }, [habits, query, tab, order]);
 
-  const onCreateHabit = () => {
-    const n = habits.length + 1;
-    setHabits(prev => [
-      ...prev,
-      {
-        id: String(n),
-        name: `Hábito ${n}`,
-        monthCount: 0,
-        streak: 0,
-        total: 0,
-        monthProgressPct: 0,
-        lastDate: '-',
-        dueToday: true,
-      },
-    ]);
+  // handlers
+  const reload = async () => {
+    const data = await listHabits({ tab, orderBy: order });
+    setHabits(data);
   };
 
-  const onCompleteToday = (id: string) => {
-    setHabits(prev =>
-      prev.map(h =>
-        h.id === id
-          ? {
-              ...h,
-              monthCount: h.monthCount + 1,
-              total: h.total + 1,
-              streak: h.streak + 1,
-              monthProgressPct: Math.min(1, h.monthProgressPct + 0.05),
-              lastDate: new Date().toLocaleDateString('pt-BR'),
-              dueToday: false,
-            }
-          : h,
-      ),
-    );
+  const onCreateHabit = async () => {
+    await createHabit('Alongamento');
+    await reload();
+  };
+
+  const onToggleToday = async (id: string) => {
+    await toggleToday(id);
+    await reload();
   };
 
   const onEdit = (id: string) => {
     console.log('Editar', id);
   };
 
-  const onDelete = (id: string) => {
-    setHabits(prev => prev.filter(h => h.id !== id));
+  const onDelete = async (id: string) => {
+    await deleteHabit(id);
+    await reload();
   };
 
   return (
@@ -154,19 +142,26 @@ export default function TabOneScreen() {
           </Pressable>
         </View>
 
+        {/* Loading */}
+        {loading && (
+          <RNView style={{ paddingVertical: 16, alignItems: 'center' }}>
+            <ActivityIndicator />
+          </RNView>
+        )}
+
         {/* Lista de hábitos */}
-        {filtered.map(h => (
-          <HabitCard
-            key={h.id}
-            habit={h}
-            onComplete={() => onCompleteToday(h.id)}
-            onEdit={() => onEdit(h.id)}
-            onDelete={() => onDelete(h.id)}
-            C={C}
-            scheme={scheme}
-            styles={styles}
-          />
-        ))}
+        {!loading &&
+          filtered.map(h => (
+            <HabitCard
+              key={h.id}
+              habit={h}
+              onToggle={() => onToggleToday(h.id)}
+              onEdit={() => onEdit(h.id)}
+              onDelete={() => onDelete(h.id)}
+              C={C}
+              styles={styles}
+            />
+          ))}
 
         {/* espaçamento para não cobrir pelo FAB */}
         <RNView style={{ height: 80 }} />
@@ -179,6 +174,12 @@ export default function TabOneScreen() {
       </Pressable>
     </View>
   );
+}
+
+/* ---------- helpers ---------- */
+
+function todayStr() {
+  return new Date().toLocaleDateString('pt-BR'); // ex.: 22/10/2025
 }
 
 /* ---------- componentes auxiliares ---------- */
@@ -196,7 +197,7 @@ function Kpi({
 }) {
   const bg =
     tone === 'green'
-      ? (C.background === '#FFFFFF' ? '#ecfdf5' : '#0f1f19') // verde suave claro/escuro
+      ? (C.background === '#FFFFFF' ? '#ecfdf5' : '#0f1f19')
       : tone === 'warn'
       ? (C.background === '#FFFFFF' ? '#fffbeb' : '#2b1e07')
       : tone === 'lilac'
@@ -242,24 +243,21 @@ function Chip({
 
 function HabitCard({
   habit,
-  onComplete,
+  onToggle,
   onEdit,
   onDelete,
   C,
-  scheme,
   styles,
 }: {
   habit: Habit;
-  onComplete: () => void;
+  onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
   C: typeof Colors.light;
-  scheme: 'light' | 'dark' | null | undefined;
   styles: ReturnType<typeof createStyles>;
 }) {
   const pct = Math.max(0, Math.min(1, habit.monthProgressPct));
-  const dueBg = scheme === 'dark' ? '#2b1e07' : '#fff7ed';
-  const dueBorder = scheme === 'dark' ? '#634c1a' : '#fed7aa';
+  const isDoneToday = !habit.dueToday && habit.lastDate === todayStr();
 
   return (
     <View style={styles.habitCard}>
@@ -267,7 +265,7 @@ function HabitCard({
         <Text style={styles.habitTitle}>{habit.name}</Text>
 
         {habit.dueToday && (
-          <RNView style={[styles.dueTodayBadge, { backgroundColor: dueBg, borderColor: dueBorder }]}>
+          <RNView style={styles.dueTodayBadge}>
             <Ionicons name="time-outline" size={14} color={C.warn} />
             <Text style={[styles.dueTodayText, { color: C.warn }]}>fazer hoje</Text>
           </RNView>
@@ -291,9 +289,11 @@ function HabitCard({
 
       {/* ações */}
       <RNView style={styles.actionsRow}>
-        <Pressable style={styles.primaryBtn} onPress={onComplete}>
-          <Ionicons name="checkmark-circle" size={18} color={C.primaryText} />
-          <Text style={styles.primaryBtnText}>Concluir hoje</Text>
+        <Pressable
+          style={[styles.primaryBtn, isDoneToday && { backgroundColor: C.good }]}
+          onPress={onToggle}
+        >
+          <Text style={styles.primaryBtnText}>{isDoneToday ? 'Desfazer hoje' : 'Concluir hoje'}</Text>
         </Pressable>
 
         <Pressable style={styles.ghostBtn}>
@@ -312,7 +312,17 @@ function HabitCard({
   );
 }
 
-function Metric({ value, label, icon, C }: { value: number; label: string; icon?: 'flame'; C: typeof Colors.light }) {
+function Metric({
+  value,
+  label,
+  icon,
+  C,
+}: {
+  value: number;
+  label: string;
+  icon?: 'flame';
+  C: typeof Colors.light;
+}) {
   return (
     <RNView style={{ flex: 1, backgroundColor: C.card, paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}>
       <Text style={{ fontSize: 18, fontWeight: '800', color: C.text }}>{value}</Text>
@@ -326,7 +336,7 @@ function Metric({ value, label, icon, C }: { value: number; label: string; icon?
 
 /* ---------- estilos ---------- */
 
-function createStyles(C: typeof Colors.light, scheme: 'light' | 'dark' | null | undefined) {
+function createStyles(C: typeof Colors.light) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.background },
     scroll: { padding: 16, paddingBottom: 0 },
@@ -342,19 +352,6 @@ function createStyles(C: typeof Colors.light, scheme: 'light' | 'dark' | null | 
     headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     title: { fontSize: 20, fontWeight: '700', color: C.text },
     subtitle: { color: C.mutedText, marginTop: 2 },
-
-    analysisBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      borderWidth: 1,
-      borderColor: C.border,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
-      backgroundColor: C.successBg,
-    },
-    analysisText: { color: C.primary, fontWeight: '600', fontSize: 12 },
 
     kpiRow: { flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 12 },
 
@@ -403,7 +400,9 @@ function createStyles(C: typeof Colors.light, scheme: 'light' | 'dark' | null | 
       gap: 6,
       paddingHorizontal: 10,
       paddingVertical: 4,
+      backgroundColor: C.background === '#FFFFFF' ? '#fff7ed' : '#2b1e07',
       borderWidth: 1,
+      borderColor: C.background === '#FFFFFF' ? '#fed7aa' : '#634c1a',
       borderRadius: 999,
     },
     dueTodayText: { fontWeight: '700', fontSize: 12 },
@@ -432,7 +431,7 @@ function createStyles(C: typeof Colors.light, scheme: 'light' | 'dark' | null | 
       flexDirection: 'row',
       gap: 8,
     },
-    primaryBtnText: { color: C.primaryText, fontWeight: '700' },
+    primaryBtnText: { color: C.primaryText, fontWeight: '700', fontSize: 14 },
 
     ghostBtn: {
       flex: 1,

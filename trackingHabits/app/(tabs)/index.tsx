@@ -1,5 +1,5 @@
 import Colors from '@/constants/Colors';
-import { createHabit, deleteHabit, listHabits, toggleToday, type Habit } from '@/services/habits.service';
+import { deleteHabit, listHabits, toggleToday, type Habit } from '@/services/habits.service';
 import { Session } from '@/services/usersService';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Redirect, router } from 'expo-router';
@@ -16,6 +16,8 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+import EditHabitModal from '../screen/EditHabitModal';
+import NewHabitModal from '../screen/NewHabitModal';
 
 export default function TabOneScreen() {
   const scheme = useColorScheme() ?? 'light';
@@ -36,6 +38,13 @@ export default function TabOneScreen() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  // adicionar habito
+  const [showNewHabit, setShowNewHabit] = useState(false);
+
+  // editar hábito
+  const [editHabit, setEditHabit] = useState<Habit | null>(null);
+
 
   // boot: carrega sessão do storage
   useEffect(() => {
@@ -107,19 +116,6 @@ export default function TabOneScreen() {
     }
   };
 
-  const onCreateHabit = async () => {
-    if (!userId) {
-      Alert.alert('Sessão', 'Você não está logado.');
-      return;
-    }
-    try {
-      await createHabit('Alongamento', userId);
-      await reload();
-    } catch (e: any) {
-      Alert.alert('Erro', e?.message || 'Não foi possível criar o hábito.');
-    }
-  };
-
   const onToggleToday = async (id: string) => {
     try {
       await toggleToday(id);
@@ -129,17 +125,50 @@ export default function TabOneScreen() {
     }
   };
 
-  const onEdit = (id: string) => {
-    // abre modal/rota para renomear, etc.
-    console.log('Editar', id);
+  const onEdit = (habit: Habit) => {
+    setEditHabit(habit);
   };
 
-  const onDelete = async (id: string) => {
+  const onDelete = async (habit: Habit) => {
     try {
-      await deleteHabit(id);
-      await reload();
+      // Primeira confirmação
+      Alert.alert(
+        "Excluir hábito",
+        `Tem certeza que deseja excluir o hábito "${habit.name}"?`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Sim, excluir",
+            style: "destructive",
+            onPress: async () => {
+              // Se o hábito tiver dias concluídos, segunda confirmação
+              if (habit.total > 0 || habit.monthCount > 0 || habit.streak > 0) {
+                Alert.alert(
+                  "Atenção",
+                  `O hábito "${habit.name}" possui dias concluídos. Essa ação apagará permanentemente o histórico. Deseja continuar mesmo assim?`,
+                  [
+                    { text: "Cancelar", style: "cancel" },
+                    {
+                      text: "Excluir definitivamente",
+                      style: "destructive",
+                      onPress: async () => {
+                        await deleteHabit(habit.id);
+                        await reload();
+                      },
+                    },
+                  ]
+                );
+              } else {
+                // Se não tiver histórico, exclui direto
+                await deleteHabit(habit.id);
+                await reload();
+              }
+            },
+          },
+        ]
+      );
     } catch (e: any) {
-      Alert.alert('Erro', e?.message || 'Não foi possível apagar o hábito.');
+      Alert.alert("Erro", e?.message || "Não foi possível apagar o hábito.");
     }
   };
 
@@ -230,8 +259,8 @@ export default function TabOneScreen() {
               key={h.id}
               habit={h}
               onToggle={() => onToggleToday(h.id)}
-              onEdit={() => onEdit(h.id)}
-              onDelete={() => onDelete(h.id)}
+              onEdit={() => onEdit(h)}
+              onDelete={() => onDelete(h)}
               C={C}
               styles={styles}
             />
@@ -242,10 +271,35 @@ export default function TabOneScreen() {
       </ScrollView>
 
       {/* FAB: Novo hábito */}
-      <Pressable style={styles.fab} onPress={onCreateHabit}>
+      <Pressable
+        style={styles.fab}
+        onPress={() => {
+          if (!userId) {
+            Alert.alert("Sessão", "Você não está logado.");
+            return;
+          }
+          setShowNewHabit(true);
+        }}
+      >
         <Ionicons name="add" size={26} color={C.primaryText} />
         <Text style={styles.fabText}>Novo hábito</Text>
       </Pressable>
+
+      {userId && (
+        <NewHabitModal
+          visible={showNewHabit}
+          onClose={() => setShowNewHabit(false)}
+          userId={userId}
+          onCreated={reload} // recarrega a lista depois de salvar
+        />
+      )}
+
+      <EditHabitModal
+        visible={!!editHabit}
+        onClose={() => setEditHabit(null)}
+        habit={editHabit}
+        onUpdated={reload}
+      />
     </View>
   );
 }
@@ -325,8 +379,8 @@ function HabitCard({
 }: {
   habit: Habit;
   onToggle: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit: (h: Habit) => void;
+  onDelete: (h: Habit) => void;
   C: typeof Colors.light;
   styles: ReturnType<typeof createStyles>;
 }) {
@@ -378,14 +432,17 @@ function HabitCard({
           <Text style={styles.ghostBtnText}>Calendário</Text>
         </Pressable>
 
-        <Pressable style={styles.iconBtn} onPress={onEdit}>
+        <Pressable style={styles.iconBtn} onPress={() => onEdit(habit)}>
           <Feather name="edit-2" size={18} color={C.mutedText} />
         </Pressable>
-        <Pressable style={styles.iconBtn} onPress={onDelete}>
+
+        <Pressable style={styles.iconBtn} onPress={() => onDelete(habit)}>
           <Feather name="trash-2" size={18} color="#ef4444" />
         </Pressable>
+
       </RNView>
     </View>
+
   );
 }
 

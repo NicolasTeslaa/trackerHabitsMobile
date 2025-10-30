@@ -1,9 +1,12 @@
 import Colors from '@/constants/Colors';
 import { createHabit, deleteHabit, listHabits, toggleToday, type Habit } from '@/services/habits.service';
+import { Session } from '@/services/usersService';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Redirect, router } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   View as RNView,
   ScrollView,
@@ -19,6 +22,11 @@ export default function TabOneScreen() {
   const C = Colors[scheme];
   const styles = createStyles(C);
 
+  // sessão/usuário
+  const [ready, setReady] = useState(false);
+  const [isLogged, setIsLogged] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
   // filtros
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'all' | 'today' | 'done'>('all');
@@ -27,26 +35,48 @@ export default function TabOneScreen() {
   // dados
   const [habits, setHabits] = useState<Habit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  // carregar lista inicial e sempre que filtros mudarem (opcional)
+  // boot: carrega sessão do storage
   useEffect(() => {
     let alive = true;
     (async () => {
-      setLoading(true);
-      const data = await listHabits({ tab, orderBy: order });
-      if (alive) setHabits(data);
-      setLoading(false);
+      try {
+        const { me } = await Session.load(); // lê @me e token
+        if (!alive) return;
+        setIsLogged(!!me);
+        setUserId(me?.id ?? null);
+      } finally {
+        if (alive) setReady(true);
+      }
     })();
-    return () => {
-      alive = false;
-    };
-  }, [tab, order]);
+    return () => { alive = false; };
+  }, []);
+
+  // carregar lista quando filtros mudarem e houver userId válido
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!userId) return;
+      setLoading(true);
+      setErr(null);
+      try {
+        const data = await listHabits({ userId, tab, orderBy: order });
+        if (alive) setHabits(data);
+      } catch (e: any) {
+        if (alive) setErr(e?.message || 'Falha ao carregar hábitos');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [userId, tab, order]);
 
   const kpis = useMemo(() => {
     const ativos = habits.length;
     const hoje = habits.filter(h => h.dueToday === true).length;
     const noMes = habits.reduce((acc, h) => acc + h.monthCount, 0);
-    const taxa30d = 0.16; // mock
+    const taxa30d = 0.16; // placeholder local
     return { noMes, hoje, ativos, taxa30d };
   }, [habits]);
 
@@ -65,28 +95,67 @@ export default function TabOneScreen() {
 
   // handlers
   const reload = async () => {
-    const data = await listHabits({ tab, orderBy: order });
-    setHabits(data);
+    if (!userId) return;
+    try {
+      setLoading(true);
+      const data = await listHabits({ userId, tab, orderBy: order });
+      setHabits(data);
+    } catch (e: any) {
+      setErr(e?.message || 'Falha ao recarregar hábitos');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onCreateHabit = async () => {
-    await createHabit('Alongamento');
-    await reload();
+    if (!userId) {
+      Alert.alert('Sessão', 'Você não está logado.');
+      return;
+    }
+    try {
+      await createHabit('Alongamento', userId);
+      await reload();
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Não foi possível criar o hábito.');
+    }
   };
 
   const onToggleToday = async (id: string) => {
-    await toggleToday(id);
-    await reload();
+    try {
+      await toggleToday(id);
+      await reload();
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Não foi possível atualizar o hábito.');
+    }
   };
 
   const onEdit = (id: string) => {
+    // abre modal/rota para renomear, etc.
     console.log('Editar', id);
   };
 
   const onDelete = async (id: string) => {
-    await deleteHabit(id);
-    await reload();
+    try {
+      await deleteHabit(id);
+      await reload();
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Não foi possível apagar o hábito.');
+    }
   };
+
+  // Loading inicial enquanto checa sessão
+  if (!ready) {
+    return (
+      <View style={[styles.screen, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  // Sem sessão → manda pro login
+  if (ready && !isLogged) {
+    return <Redirect href="/login" />;
+  }
 
   return (
     <View style={styles.screen}>
@@ -142,10 +211,15 @@ export default function TabOneScreen() {
           </Pressable>
         </View>
 
-        {/* Loading */}
+        {/* Loading / erro */}
         {loading && (
           <RNView style={{ paddingVertical: 16, alignItems: 'center' }}>
             <ActivityIndicator />
+          </RNView>
+        )}
+        {!!err && !loading && (
+          <RNView style={{ paddingVertical: 8 }}>
+            <Text style={{ color: '#ef4444' }}>{err}</Text>
           </RNView>
         )}
 
@@ -199,10 +273,10 @@ function Kpi({
     tone === 'green'
       ? (C.background === '#FFFFFF' ? '#ecfdf5' : '#0f1f19')
       : tone === 'warn'
-      ? (C.background === '#FFFFFF' ? '#fffbeb' : '#2b1e07')
-      : tone === 'lilac'
-      ? (C.background === '#FFFFFF' ? '#f5f3ff' : '#191827')
-      : C.chipBg;
+        ? (C.background === '#FFFFFF' ? '#fffbeb' : '#2b1e07')
+        : tone === 'lilac'
+          ? (C.background === '#FFFFFF' ? '#f5f3ff' : '#191827')
+          : C.chipBg;
 
   return (
     <RNView style={[{ borderRadius: 12, paddingVertical: 12, alignItems: 'center', flex: 1, backgroundColor: bg }]}>
@@ -296,7 +370,10 @@ function HabitCard({
           <Text style={styles.primaryBtnText}>{isDoneToday ? 'Desfazer hoje' : 'Concluir hoje'}</Text>
         </Pressable>
 
-        <Pressable style={styles.ghostBtn}>
+        <Pressable style={styles.ghostBtn} onPress={() => router.push({
+          pathname: "/habit/[id]/calendar",
+          params: { id: habit.id, name: habit.name },
+        })}>
           <Ionicons name="calendar-outline" size={18} color={C.mutedText} />
           <Text style={styles.ghostBtnText}>Calendário</Text>
         </Pressable>

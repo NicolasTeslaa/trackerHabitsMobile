@@ -3,14 +3,14 @@ import Colors from "@/constants/Colors";
 import { updateHabit, type Habit } from "@/services/habits.service";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 export default function EditHabitModal({
@@ -22,7 +22,7 @@ export default function EditHabitModal({
   visible: boolean;
   onClose: () => void;
   habit: Habit | null;
-  onUpdated: () => void;
+  onUpdated: (updated: Habit) => void; // <— envia o updated
 }) {
   const scheme = "light";
   const C = Colors[scheme];
@@ -31,7 +31,6 @@ export default function EditHabitModal({
   const [name, setName] = useState(habit?.name || "");
   const [loading, setLoading] = useState(false);
 
-  // Atualiza o nome quando o modal abre com outro hábito
   useEffect(() => {
     setName(habit?.name || "");
   }, [habit]);
@@ -45,15 +44,16 @@ export default function EditHabitModal({
       return;
     }
     if (trimmed === habit.name) {
-      Alert.alert("Nada alterado", "O nome continua igual, nada foi modificado.");
+      Alert.alert("Nada alterado", "O nome continua igual.");
       return;
     }
 
     try {
       setLoading(true);
       await updateHabit(habit.id, { name: trimmed });
-      onUpdated(); // recarrega lista
-      onClose();   // fecha modal
+      // atualiza imediatamente no front sem novo fetch
+      onUpdated({ ...habit, name: trimmed });
+      onClose();
     } catch (e: any) {
       Alert.alert("Erro", e?.message || "Falha ao atualizar o hábito.");
     } finally {
@@ -62,7 +62,13 @@ export default function EditHabitModal({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      // dica: no Android melhora visual com status bar
+      statusBarTranslucent
+    >
       <View style={styles.overlay}>
         <View style={styles.modal}>
           <Text style={styles.title}>Editar hábito</Text>
@@ -91,7 +97,9 @@ export default function EditHabitModal({
               {loading ? (
                 <ActivityIndicator color={C.primaryText} />
               ) : (
-                <Text style={[styles.btnText, { color: C.primaryText }]}>Salvar</Text>
+                <Text style={[styles.btnText, { color: C.primaryText }]}>
+                  Salvar
+                </Text>
               )}
             </Pressable>
           </View>

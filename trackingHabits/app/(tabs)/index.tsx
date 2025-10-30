@@ -39,19 +39,16 @@ export default function TabOneScreen() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // adicionar habito
+  // modais
   const [showNewHabit, setShowNewHabit] = useState(false);
-
-  // editar hábito
   const [editHabit, setEditHabit] = useState<Habit | null>(null);
-
 
   // boot: carrega sessão do storage
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const { me } = await Session.load(); // lê @me e token
+        const { me } = await Session.load();
         if (!alive) return;
         setIsLogged(!!me);
         setUserId(me?.id ?? null);
@@ -62,23 +59,20 @@ export default function TabOneScreen() {
     return () => { alive = false; };
   }, []);
 
-  // carregar lista quando filtros mudarem e houver userId válido
+  // carregar lista quando filtros mudarem
   useEffect(() => {
-    let alive = true;
+    if (!userId) return;
+    setLoading(true);
     (async () => {
-      if (!userId) return;
-      setLoading(true);
-      setErr(null);
       try {
         const data = await listHabits({ userId, tab, orderBy: order });
-        if (alive) setHabits(data);
+        setHabits(data);
       } catch (e: any) {
-        if (alive) setErr(e?.message || 'Falha ao carregar hábitos');
+        setErr(e?.message || 'Falha ao carregar hábitos');
       } finally {
-        if (alive) setLoading(false);
+        setLoading(false);
       }
     })();
-    return () => { alive = false; };
   }, [userId, tab, order]);
 
   const kpis = useMemo(() => {
@@ -102,36 +96,34 @@ export default function TabOneScreen() {
     return arr;
   }, [habits, query, tab, order]);
 
-  // handlers
+  // ---------- handlers ----------
+
   const reload = async () => {
     if (!userId) return;
     try {
-      setLoading(true);
       const data = await listHabits({ userId, tab, orderBy: order });
       setHabits(data);
     } catch (e: any) {
       setErr(e?.message || 'Falha ao recarregar hábitos');
-    } finally {
-      setLoading(false);
     }
   };
 
+  // Toggle só atualiza o item (usa retorno do service)
   const onToggleToday = async (id: string) => {
     try {
-      await toggleToday(id);
-      await reload();
+      const updated = await toggleToday(id); // Habit | undefined
+      if (!updated) return;
+      setHabits(prev => prev.map(h => (h.id === id ? updated : h)));
     } catch (e: any) {
       Alert.alert('Erro', e?.message || 'Não foi possível atualizar o hábito.');
     }
   };
 
-  const onEdit = (habit: Habit) => {
-    setEditHabit(habit);
-  };
+  const onEdit = (habit: Habit) => setEditHabit(habit);
 
+  // Excluir atualiza estado local; sem reload global
   const onDelete = async (habit: Habit) => {
     try {
-      // Primeira confirmação
       Alert.alert(
         "Excluir hábito",
         `Tem certeza que deseja excluir o hábito "${habit.name}"?`,
@@ -141,7 +133,6 @@ export default function TabOneScreen() {
             text: "Sim, excluir",
             style: "destructive",
             onPress: async () => {
-              // Se o hábito tiver dias concluídos, segunda confirmação
               if (habit.total > 0 || habit.monthCount > 0 || habit.streak > 0) {
                 Alert.alert(
                   "Atenção",
@@ -153,15 +144,14 @@ export default function TabOneScreen() {
                       style: "destructive",
                       onPress: async () => {
                         await deleteHabit(habit.id);
-                        await reload();
+                        setHabits(prev => prev.filter(h => h.id !== habit.id));
                       },
                     },
                   ]
                 );
               } else {
-                // Se não tiver histórico, exclui direto
                 await deleteHabit(habit.id);
-                await reload();
+                setHabits(prev => prev.filter(h => h.id !== habit.id));
               }
             },
           },
@@ -172,7 +162,17 @@ export default function TabOneScreen() {
     }
   };
 
-  // Loading inicial enquanto checa sessão
+  // callbacks dos modais (evitam refetch)
+  const handleHabitCreated = (newHabit: Habit) => {
+    setHabits(prev => [newHabit, ...prev]);
+  };
+
+  const handleHabitUpdated = (updated: Habit) => {
+    setHabits(prev => prev.map(h => (h.id === updated.id ? updated : h)));
+  };
+
+  // ---------- UI ----------
+
   if (!ready) {
     return (
       <View style={[styles.screen, { alignItems: 'center', justifyContent: 'center' }]}>
@@ -181,10 +181,7 @@ export default function TabOneScreen() {
     );
   }
 
-  // Sem sessão → manda pro login
-  if (ready && !isLogged) {
-    return <Redirect href="/login" />;
-  }
+  if (ready && !isLogged) return <Redirect href="/login" />;
 
   return (
     <View style={styles.screen}>
@@ -266,7 +263,6 @@ export default function TabOneScreen() {
             />
           ))}
 
-        {/* espaçamento para não cobrir pelo FAB */}
         <RNView style={{ height: 80 }} />
       </ScrollView>
 
@@ -290,7 +286,7 @@ export default function TabOneScreen() {
           visible={showNewHabit}
           onClose={() => setShowNewHabit(false)}
           userId={userId}
-          onCreated={reload} // recarrega a lista depois de salvar
+          onCreated={handleHabitCreated}
         />
       )}
 
@@ -298,7 +294,10 @@ export default function TabOneScreen() {
         visible={!!editHabit}
         onClose={() => setEditHabit(null)}
         habit={editHabit}
-        onUpdated={reload}
+        onUpdated={(updated) => {
+          // atualiza só o item localmente
+          setHabits(prev => prev.map(h => h.id === updated.id ? updated : h));
+        }}
       />
     </View>
   );
@@ -312,6 +311,8 @@ function todayStr() {
 
 /* ---------- componentes auxiliares ---------- */
 
+type Palette = typeof Colors.light;
+
 function Kpi({
   value,
   label,
@@ -321,7 +322,7 @@ function Kpi({
   value: string;
   label: string;
   tone?: 'green' | 'warn' | 'lilac';
-  C: typeof Colors.light;
+  C: Palette;
 }) {
   const bg =
     tone === 'green'
@@ -349,7 +350,7 @@ function Chip({
   text: string;
   active?: boolean;
   onPress?: () => void;
-  C: typeof Colors.light;
+  C: Palette;
 }) {
   return (
     <Pressable
@@ -381,7 +382,7 @@ function HabitCard({
   onToggle: () => void;
   onEdit: (h: Habit) => void;
   onDelete: (h: Habit) => void;
-  C: typeof Colors.light;
+  C: Palette;
   styles: ReturnType<typeof createStyles>;
 }) {
   const pct = Math.max(0, Math.min(1, habit.monthProgressPct));
@@ -424,10 +425,15 @@ function HabitCard({
           <Text style={styles.primaryBtnText}>{isDoneToday ? 'Desfazer hoje' : 'Concluir hoje'}</Text>
         </Pressable>
 
-        <Pressable style={styles.ghostBtn} onPress={() => router.push({
-          pathname: "/habit/[id]/calendar",
-          params: { id: habit.id, name: habit.name },
-        })}>
+        <Pressable
+          style={styles.ghostBtn}
+          onPress={() =>
+            router.push({
+              pathname: '/habit/[id]/calendar',
+              params: { id: habit.id, name: habit.name },
+            })
+          }
+        >
           <Ionicons name="calendar-outline" size={18} color={C.mutedText} />
           <Text style={styles.ghostBtnText}>Calendário</Text>
         </Pressable>
@@ -439,10 +445,8 @@ function HabitCard({
         <Pressable style={styles.iconBtn} onPress={() => onDelete(habit)}>
           <Feather name="trash-2" size={18} color="#ef4444" />
         </Pressable>
-
       </RNView>
     </View>
-
   );
 }
 
@@ -455,7 +459,7 @@ function Metric({
   value: number;
   label: string;
   icon?: 'flame';
-  C: typeof Colors.light;
+  C: Palette;
 }) {
   return (
     <RNView style={{ flex: 1, backgroundColor: C.card, paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}>
@@ -469,7 +473,6 @@ function Metric({
 }
 
 /* ---------- estilos ---------- */
-
 function createStyles(C: typeof Colors.light) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.background },

@@ -5,7 +5,6 @@ import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -13,7 +12,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 const SS_KEYS = {
@@ -133,13 +132,12 @@ export default function LoginScreen() {
       <View style={styles.card}>
         {/* Branding minimal */}
         <View style={styles.header}>
-          <View style={styles.logoWrap}>
-            {/* substitua por seu logo se quiser */}
+          {/* <View style={styles.logoWrap}>
             <Image
-              source={{ uri: "https://avatars.githubusercontent.com/u/9919?s=200&v=4" }}
+              source={{ uri: "https://drive.google.com/file/d/1zWq6C_s9avb2xT1pDW2UZEZgQR2vMcou/view" }}
               style={styles.logo}
             />
-          </View>
+          </View> */}
           <Text style={styles.title}>Bem-vindo de volta</Text>
           <Text style={styles.subtitle}>
             Acesse sua conta para continuar acompanhando seus lançamentos.

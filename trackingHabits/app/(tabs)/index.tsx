@@ -16,8 +16,44 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+
+// animações moti
+import { AnimatePresence, MotiText, MotiView } from 'moti';
+
+// reanimated (wrapper universal de escala + chips)
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+
+// ==== modais ====
 import EditHabitModal from '../screen/EditHabitModal';
 import NewHabitModal from '../screen/NewHabitModal';
+
+/** Wrapper de Pressable com animação de escala (compatível com qualquer versão) */
+function ScalePressable({
+  onPress,
+  children,
+  activeScale = 0.96,
+  duration = 120,
+  disabled,
+}: {
+  onPress?: () => void;
+  children: React.ReactNode;
+  activeScale?: number;
+  duration?: number;
+  disabled?: boolean;
+}) {
+  const s = useSharedValue(1);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }), []);
+  return (
+    <Pressable
+      disabled={disabled}
+      onPressIn={() => (s.value = withTiming(activeScale, { duration }))}
+      onPressOut={() => (s.value = withTiming(1, { duration }))}
+      onPress={onPress}
+    >
+      <Animated.View style={style}>{children}</Animated.View>
+    </Pressable>
+  );
+}
 
 export default function TabOneScreen() {
   const scheme = useColorScheme() ?? 'light';
@@ -56,7 +92,9 @@ export default function TabOneScreen() {
         if (alive) setReady(true);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // carregar lista quando filtros mudarem
@@ -96,18 +134,6 @@ export default function TabOneScreen() {
     return arr;
   }, [habits, query, tab, order]);
 
-  // ---------- handlers ----------
-
-  const reload = async () => {
-    if (!userId) return;
-    try {
-      const data = await listHabits({ userId, tab, orderBy: order });
-      setHabits(data);
-    } catch (e: any) {
-      setErr(e?.message || 'Falha ao recarregar hábitos');
-    }
-  };
-
   // Toggle só atualiza o item (usa retorno do service)
   const onToggleToday = async (id: string) => {
     try {
@@ -121,44 +147,37 @@ export default function TabOneScreen() {
 
   const onEdit = (habit: Habit) => setEditHabit(habit);
 
-  // Excluir atualiza estado local; sem reload global
+  // Excluir atualiza estado local; sem reload global (com saída animada)
   const onDelete = async (habit: Habit) => {
     try {
-      Alert.alert(
-        "Excluir hábito",
-        `Tem certeza que deseja excluir o hábito "${habit.name}"?`,
-        [
-          { text: "Cancelar", style: "cancel" },
-          {
-            text: "Sim, excluir",
-            style: "destructive",
-            onPress: async () => {
-              if (habit.total > 0 || habit.monthCount > 0 || habit.streak > 0) {
-                Alert.alert(
-                  "Atenção",
-                  `O hábito "${habit.name}" possui dias concluídos. Essa ação apagará permanentemente o histórico. Deseja continuar mesmo assim?`,
-                  [
-                    { text: "Cancelar", style: "cancel" },
-                    {
-                      text: "Excluir definitivamente",
-                      style: "destructive",
-                      onPress: async () => {
-                        await deleteHabit(habit.id);
-                        setHabits(prev => prev.filter(h => h.id !== habit.id));
-                      },
-                    },
-                  ]
-                );
-              } else {
-                await deleteHabit(habit.id);
-                setHabits(prev => prev.filter(h => h.id !== habit.id));
-              }
-            },
+      Alert.alert('Excluir hábito', `Tem certeza que deseja excluir o hábito "${habit.name}"?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sim, excluir',
+          style: 'destructive',
+          onPress: async () => {
+            const confirmAndRemove = async () => {
+              await deleteHabit(habit.id);
+              setHabits(prev => prev.filter(h => h.id !== habit.id));
+            };
+
+            if (habit.total > 0 || habit.monthCount > 0 || habit.streak > 0) {
+              Alert.alert(
+                'Atenção',
+                `O hábito "${habit.name}" possui dias concluídos. Essa ação apagará permanentemente o histórico. Deseja continuar mesmo assim?`,
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  { text: 'Excluir definitivamente', style: 'destructive', onPress: confirmAndRemove },
+                ],
+              );
+            } else {
+              await confirmAndRemove();
+            }
           },
-        ]
-      );
+        },
+      ]);
     } catch (e: any) {
-      Alert.alert("Erro", e?.message || "Não foi possível apagar o hábito.");
+      Alert.alert('Erro', e?.message || 'Não foi possível apagar o hábito.');
     }
   };
 
@@ -166,12 +185,6 @@ export default function TabOneScreen() {
   const handleHabitCreated = (newHabit: Habit) => {
     setHabits(prev => [newHabit, ...prev]);
   };
-
-  const handleHabitUpdated = (updated: Habit) => {
-    setHabits(prev => prev.map(h => (h.id === updated.id ? updated : h)));
-  };
-
-  // ---------- UI ----------
 
   if (!ready) {
     return (
@@ -186,25 +199,61 @@ export default function TabOneScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Header */}
-        <View style={styles.headerCard}>
+        {/* Header com fade/slide */}
+        <MotiView
+          from={{ opacity: 0, translateY: -12 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ type: 'timing', duration: 420 }}
+          style={styles.headerCard}
+        >
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.title}>Seus hábitos</Text>
-              <Text style={styles.subtitle}>Foco no que importa hoje</Text>
+              <MotiText
+                from={{ opacity: 0, translateY: 6 }}
+                animate={{ opacity: 1, translateY: 0 }}
+                transition={{ delay: 80 }}
+                style={styles.title}
+              >
+                Seus hábitos
+              </MotiText>
+              <MotiText
+                from={{ opacity: 0, translateY: 6 }}
+                animate={{ opacity: 1, translateY: 0 }}
+                transition={{ delay: 140 }}
+                style={styles.subtitle}
+              >
+                Foco no que importa hoje
+              </MotiText>
             </View>
           </View>
 
-          {/* KPIs */}
+          {/* KPIs com stagger */}
           <RNView style={styles.kpiRow}>
-            <Kpi value={kpis.noMes.toString()} label="Este mês" C={C} />
-            <Kpi value={kpis.hoje.toString()} label="Hoje" tone="green" C={C} />
-            <Kpi value={kpis.ativos.toString()} label="Ativos" tone="lilac" C={C} />
-            <Kpi value={`${Math.round(kpis.taxa30d * 100)}%`} label="Taxa (30d)" tone="warn" C={C} />
+            {[
+              { v: kpis.noMes.toString(), l: 'Este mês' },
+              { v: kpis.hoje.toString(), l: 'Hoje', t: 'green' as const },
+              { v: kpis.ativos.toString(), l: 'Ativos', t: 'lilac' as const },
+              { v: `${Math.round(kpis.taxa30d * 100)}%`, l: 'Taxa (30d)', t: 'warn' as const },
+            ].map((k, i) => (
+              <MotiView
+                key={k.l}
+                from={{ opacity: 0, translateY: 12, scale: 0.98 }}
+                animate={{ opacity: 1, translateY: 0, scale: 1 }}
+                transition={{ delay: 100 + i * 60, damping: 14 }}
+                style={{ flex: 1 }}
+              >
+                <Kpi value={k.v} label={k.l} tone={k.t} C={C} />
+              </MotiView>
+            ))}
           </RNView>
 
           {/* busca */}
-          <RNView style={styles.searchWrap}>
+          <MotiView
+            from={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'timing', duration: 220, delay: 120 }}
+            style={styles.searchWrap}
+          >
             <Ionicons name="search" size={18} color={C.mutedText} />
             <TextInput
               placeholder="Pesquisar por nome..."
@@ -213,29 +262,31 @@ export default function TabOneScreen() {
               onChangeText={setQuery}
               style={styles.searchInput}
             />
-          </RNView>
+          </MotiView>
 
           {/* chips */}
           <RNView style={styles.chipsRow}>
-            <Chip text="Todos" active={tab === 'all'} onPress={() => setTab('all')} C={C} />
-            <Chip text="Para hoje" active={tab === 'today'} onPress={() => setTab('today')} C={C} />
-            <Chip text="Concluídos hoje" active={tab === 'done'} onPress={() => setTab('done')} C={C} />
+            <AnimatedChip text="Todos" active={tab === 'all'} onPress={() => setTab('all')} C={C} />
+            <AnimatedChip text="Para hoje" active={tab === 'today'} onPress={() => setTab('today')} C={C} />
+            <AnimatedChip text="Concluídos hoje" active={tab === 'done'} onPress={() => setTab('done')} C={C} />
           </RNView>
 
           {/* ordenar */}
-          <Pressable
-            style={styles.orderSelect}
+          <ScalePressable
             onPress={() => {
               const next: Record<typeof order, typeof order> = { streak: 'name', name: 'month', month: 'streak' };
               setOrder(next[order]);
             }}
+            activeScale={0.98}
           >
-            <Text style={styles.orderText}>
-              Ordenar por: {order === 'streak' ? 'Sequência' : order === 'name' ? 'Nome' : 'Mês'}
-            </Text>
-            <MaterialIcons name="keyboard-arrow-down" size={20} color={C.mutedText} />
-          </Pressable>
-        </View>
+            <View style={styles.orderSelect}>
+              <Text style={styles.orderText}>
+                Ordenar por: {order === 'streak' ? 'Sequência' : order === 'name' ? 'Nome' : 'Mês'}
+              </Text>
+              <MaterialIcons name="keyboard-arrow-down" size={20} color={C.mutedText} />
+            </View>
+          </ScalePressable>
+        </MotiView>
 
         {/* Loading / erro */}
         {loading && (
@@ -249,37 +300,53 @@ export default function TabOneScreen() {
           </RNView>
         )}
 
-        {/* Lista de hábitos */}
-        {!loading &&
-          filtered.map(h => (
-            <HabitCard
-              key={h.id}
-              habit={h}
-              onToggle={() => onToggleToday(h.id)}
-              onEdit={() => onEdit(h)}
-              onDelete={() => onDelete(h)}
-              C={C}
-              styles={styles}
-            />
-          ))}
+        {/* Lista com AnimatePresence (enter/exit) */}
+        <AnimatePresence>
+          {!loading &&
+            filtered.map((h, idx) => (
+              <MotiView
+                key={h.id}
+                from={{ opacity: 0, translateY: 12 }}
+                animate={{ opacity: 1, translateY: 0 }}
+                exit={{ opacity: 0, translateY: -12 }}
+                transition={{ delay: 40 + idx * 24 }}
+              >
+                <HabitCard
+                  habit={h}
+                  onToggle={() => onToggleToday(h.id)}
+                  onEdit={() => onEdit(h)}
+                  onDelete={() => onDelete(h)}
+                  C={C}
+                  styles={styles}
+                />
+              </MotiView>
+            ))}
+        </AnimatePresence>
 
         <RNView style={{ height: 80 }} />
       </ScrollView>
 
-      {/* FAB: Novo hábito */}
-      <Pressable
-        style={styles.fab}
+      {/* FAB */}
+      <ScalePressable
         onPress={() => {
           if (!userId) {
-            Alert.alert("Sessão", "Você não está logado.");
+            Alert.alert('Sessão', 'Você não está logado.');
             return;
           }
           setShowNewHabit(true);
         }}
+        activeScale={0.94}
       >
-        <Ionicons name="add" size={26} color={C.primaryText} />
-        <Text style={styles.fabText}>Novo hábito</Text>
-      </Pressable>
+        <MotiView
+          from={{ scale: 1, opacity: 0.95 }}
+          animate={{ scale: 1.02, opacity: 1 }}
+          transition={{ loop: true, type: 'timing', duration: 1400 }}
+          style={styles.fab}
+        >
+          <Ionicons name="add" size={26} color={C.primaryText} />
+          <Text style={styles.fabText}>Novo hábito</Text>
+        </MotiView>
+      </ScalePressable>
 
       {userId && (
         <NewHabitModal
@@ -294,9 +361,8 @@ export default function TabOneScreen() {
         visible={!!editHabit}
         onClose={() => setEditHabit(null)}
         habit={editHabit}
-        onUpdated={(updated) => {
-          // atualiza só o item localmente
-          setHabits(prev => prev.map(h => h.id === updated.id ? updated : h));
+        onUpdated={updated => {
+          setHabits(prev => prev.map(h => (h.id === updated.id ? updated : h)));
         }}
       />
     </View>
@@ -326,22 +392,37 @@ function Kpi({
 }) {
   const bg =
     tone === 'green'
-      ? (C.background === '#FFFFFF' ? '#ecfdf5' : '#0f1f19')
+      ? C.background === '#FFFFFF'
+        ? '#ecfdf5'
+        : '#0f1f19'
       : tone === 'warn'
-        ? (C.background === '#FFFFFF' ? '#fffbeb' : '#2b1e07')
-        : tone === 'lilac'
-          ? (C.background === '#FFFFFF' ? '#f5f3ff' : '#191827')
-          : C.chipBg;
+      ? C.background === '#FFFFFF'
+        ? '#fffbeb'
+        : '#2b1e07'
+      : tone === 'lilac'
+      ? C.background === '#FFFFFF'
+        ? '#f5f3ff'
+        : '#191827'
+      : C.chipBg;
 
   return (
-    <RNView style={[{ borderRadius: 12, paddingVertical: 12, alignItems: 'center', flex: 1, backgroundColor: bg }]}>
-      <Text style={{ fontSize: 20, fontWeight: '800', color: C.text }}>{value}</Text>
-      <Text style={{ marginTop: 4, color: C.mutedText, fontSize: 12 }}>{label}</Text>
-    </RNView>
+    <MotiView
+      from={{ scale: 0.98 }}
+      animate={{ scale: 1 }}
+      transition={{ type: 'timing', duration: 220 }}
+      style={{ borderRadius: 12, paddingVertical: 12, alignItems: 'center', flex: 1, backgroundColor: bg }}
+    >
+      <MotiText from={{ opacity: 0, translateY: 4 }} animate={{ opacity: 1, translateY: 0 }} style={{ fontSize: 20, fontWeight: '800', color: C.text }}>
+        {value}
+      </MotiText>
+      <MotiText from={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 90 }} style={{ marginTop: 4, color: C.mutedText, fontSize: 12 }}>
+        {label}
+      </MotiText>
+    </MotiView>
   );
 }
 
-function Chip({
+function AnimatedChip({
   text,
   active,
   onPress,
@@ -350,22 +431,37 @@ function Chip({
   text: string;
   active?: boolean;
   onPress?: () => void;
-  C: Palette;
+  C: typeof Colors.light;
 }) {
+  const scale = useSharedValue(1);
+
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
     <Pressable
+      onPressIn={() => (scale.value = withTiming(0.95, { duration: 100 }))}
+      onPressOut={() => (scale.value = withTiming(1, { duration: 100 }))}
       onPress={onPress}
-      style={[
-        {
-          paddingVertical: 8,
-          paddingHorizontal: 14,
-          borderRadius: 999,
-          backgroundColor: C.chipBg,
-        },
-        active && { backgroundColor: C.primary },
-      ]}
     >
-      <Text style={[{ fontWeight: '600', color: C.text }, active && { color: C.primaryText }]}>{text}</Text>
+      <Animated.View style={aStyle}>
+        <MotiView
+          from={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'timing', duration: 180 }}
+          style={{
+            paddingVertical: 8,
+            paddingHorizontal: 14,
+            borderRadius: 999,
+            backgroundColor: active ? C.primary : C.chipBg,
+          }}
+        >
+          <MotiText style={{ fontWeight: '600', color: active ? C.primaryText : C.text }}>
+            {text}
+          </MotiText>
+        </MotiView>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -389,15 +485,28 @@ function HabitCard({
   const isDoneToday = !habit.dueToday && habit.lastDate === todayStr();
 
   return (
-    <View style={styles.habitCard}>
+    <MotiView
+      from={{ opacity: 0.9, translateY: 8 }}
+      animate={{ opacity: 1, translateY: 0 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      transition={{ type: 'timing', duration: 240 }}
+      style={styles.habitCard}
+    >
       <RNView style={styles.habitHeader}>
-        <Text style={styles.habitTitle}>{habit.name}</Text>
+        <MotiText from={{ opacity: 0, translateY: 4 }} animate={{ opacity: 1, translateY: 0 }} style={styles.habitTitle}>
+          {habit.name}
+        </MotiText>
 
         {habit.dueToday && (
-          <RNView style={styles.dueTodayBadge}>
+          <MotiView
+            from={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'timing', duration: 200 }}
+            style={styles.dueTodayBadge}
+          >
             <Ionicons name="time-outline" size={14} color={C.warn} />
             <Text style={[styles.dueTodayText, { color: C.warn }]}>fazer hoje</Text>
-          </RNView>
+          </MotiView>
         )}
       </RNView>
 
@@ -408,45 +517,60 @@ function HabitCard({
         <Metric value={habit.total} label="total" C={C} />
       </RNView>
 
-      {/* progresso */}
+      {/* progresso animado */}
       <RNView style={styles.progressWrap}>
-        <RNView style={[styles.progressBar, { width: `${pct * 100}%` }]} />
+        <MotiView
+          from={{ width: '0%' }}
+          animate={{ width: `${pct * 100}%` }}
+          transition={{ type: 'timing', duration: 500 }}
+          style={[styles.progressBar]}
+        />
       </RNView>
-      <Text style={styles.progressInfo}>
-        Progresso no mês: {Math.round(pct * 100)}% · última: {habit.lastDate}
-      </Text>
+      <Text style={styles.progressInfo}>Progresso no mês: {Math.round(pct * 100)}% · última: {habit.lastDate}</Text>
 
       {/* ações */}
       <RNView style={styles.actionsRow}>
-        <Pressable
-          style={[styles.primaryBtn, isDoneToday && { backgroundColor: C.good }]}
-          onPress={onToggle}
-        >
-          <Text style={styles.primaryBtnText}>{isDoneToday ? 'Desfazer hoje' : 'Concluir hoje'}</Text>
-        </Pressable>
+        <ScalePressable onPress={onToggle} activeScale={0.96}>
+          <MotiView
+            from={{ opacity: 0.9, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'timing', duration: 160 }}
+            style={[styles.primaryBtn, isDoneToday && { backgroundColor: C.good }]}
+          >
+            <MotiText from={{ opacity: 0 }} animate={{ opacity: 1 }} style={styles.primaryBtnText}>
+              {isDoneToday ? 'Desfazer hoje' : 'Concluir hoje'}
+            </MotiText>
+          </MotiView>
+        </ScalePressable>
 
-        <Pressable
-          style={styles.ghostBtn}
+        <ScalePressable
           onPress={() =>
             router.push({
               pathname: '/habit/[id]/calendar',
               params: { id: habit.id, name: habit.name },
             })
           }
+          activeScale={0.96}
         >
-          <Ionicons name="calendar-outline" size={18} color={C.mutedText} />
-          <Text style={styles.ghostBtnText}>Calendário</Text>
-        </Pressable>
+          <MotiView from={{ opacity: 0.9, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} style={styles.ghostBtn}>
+            <Ionicons name="calendar-outline" size={18} color={C.mutedText} />
+            <Text style={styles.ghostBtnText}>Calendário</Text>
+          </MotiView>
+        </ScalePressable>
 
-        <Pressable style={styles.iconBtn} onPress={() => onEdit(habit)}>
-          <Feather name="edit-2" size={18} color={C.mutedText} />
-        </Pressable>
+        <ScalePressable onPress={() => onEdit(habit)} activeScale={0.9}>
+          <MotiView from={{ opacity: 0.9, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} style={styles.iconBtn}>
+            <Feather name="edit-2" size={18} color={C.mutedText} />
+          </MotiView>
+        </ScalePressable>
 
-        <Pressable style={styles.iconBtn} onPress={() => onDelete(habit)}>
-          <Feather name="trash-2" size={18} color="#ef4444" />
-        </Pressable>
+        <ScalePressable onPress={() => onDelete(habit)} activeScale={0.9}>
+          <MotiView from={{ opacity: 0.9, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} style={styles.iconBtn}>
+            <Feather name="trash-2" size={18} color="#ef4444" />
+          </MotiView>
+        </ScalePressable>
       </RNView>
-    </View>
+    </MotiView>
   );
 }
 
@@ -462,13 +586,18 @@ function Metric({
   C: Palette;
 }) {
   return (
-    <RNView style={{ flex: 1, backgroundColor: C.card, paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}>
-      <Text style={{ fontSize: 18, fontWeight: '800', color: C.text }}>{value}</Text>
+    <MotiView
+      from={{ opacity: 0, translateY: 8 }}
+      animate={{ opacity: 1, translateY: 0 }}
+      transition={{ type: 'timing', duration: 220 }}
+      style={{ flex: 1, backgroundColor: C.card, paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}
+    >
+      <MotiText style={{ fontSize: 18, fontWeight: '800', color: C.text }}>{value}</MotiText>
       <RNView style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         {icon === 'flame' && <Ionicons name="flame-outline" size={14} color={C.lilac} />}
         <Text style={{ color: C.mutedText, fontSize: 12 }}>{label}</Text>
       </RNView>
-    </RNView>
+    </MotiView>
   );
 }
 

@@ -3,7 +3,7 @@ import { deleteHabit, listHabits, toggleToday, type Habit } from '@/services/hab
 import { Session } from '@/services/usersService';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Redirect, router } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,12 @@ import { AnimatePresence, MotiText, MotiView } from 'moti';
 
 // reanimated (wrapper universal de escala + chips)
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+
+// gesture handler (swipe)
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+
+// haptics (opcional, micro feedback)
+import * as Haptics from 'expo-haptics';
 
 // ==== modais ====
 import EditHabitModal from '../screen/EditHabitModal';
@@ -197,175 +203,177 @@ export default function TabOneScreen() {
   if (ready && !isLogged) return <Redirect href="/login" />;
 
   return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Header com fade/slide */}
-        <MotiView
-          from={{ opacity: 0, translateY: -12 }}
-          animate={{ opacity: 1, translateY: 0 }}
-          transition={{ type: 'timing', duration: 420 }}
-          style={styles.headerCard}
-        >
-          <View style={styles.headerRow}>
-            <View>
-              <MotiText
-                from={{ opacity: 0, translateY: 6 }}
-                animate={{ opacity: 1, translateY: 0 }}
-                transition={{ delay: 80 }}
-                style={styles.title}
-              >
-                Seus hábitos
-              </MotiText>
-              <MotiText
-                from={{ opacity: 0, translateY: 6 }}
-                animate={{ opacity: 1, translateY: 0 }}
-                transition={{ delay: 140 }}
-                style={styles.subtitle}
-              >
-                Foco no que importa hoje
-              </MotiText>
-            </View>
-          </View>
-
-          {/* KPIs com stagger */}
-          <RNView style={styles.kpiRow}>
-            {[
-              { v: kpis.noMes.toString(), l: 'Este mês' },
-              { v: kpis.hoje.toString(), l: 'Hoje', t: 'green' as const },
-              { v: kpis.ativos.toString(), l: 'Ativos', t: 'lilac' as const },
-              { v: `${Math.round(kpis.taxa30d * 100)}%`, l: 'Taxa (30d)', t: 'warn' as const },
-            ].map((k, i) => (
-              <MotiView
-                key={k.l}
-                from={{ opacity: 0, translateY: 12, scale: 0.98 }}
-                animate={{ opacity: 1, translateY: 0, scale: 1 }}
-                transition={{ delay: 100 + i * 60, damping: 14 }}
-                style={{ flex: 1 }}
-              >
-                <Kpi value={k.v} label={k.l} tone={k.t} C={C} />
-              </MotiView>
-            ))}
-          </RNView>
-
-          {/* busca */}
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {/* Header com fade/slide */}
           <MotiView
-            from={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'timing', duration: 220, delay: 120 }}
-            style={styles.searchWrap}
+            from={{ opacity: 0, translateY: -12 }}
+            animate={{ opacity: 1, translateY: 0 }}
+            transition={{ type: 'timing', duration: 420 }}
+            style={styles.headerCard}
           >
-            <Ionicons name="search" size={18} color={C.mutedText} />
-            <TextInput
-              placeholder="Pesquisar por nome..."
-              placeholderTextColor={C.mutedText}
-              value={query}
-              onChangeText={setQuery}
-              style={styles.searchInput}
-            />
+            <View style={styles.headerRow}>
+              <View>
+                <MotiText
+                  from={{ opacity: 0, translateY: 6 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  transition={{ delay: 80 }}
+                  style={styles.title}
+                >
+                  Seus hábitos
+                </MotiText>
+                <MotiText
+                  from={{ opacity: 0, translateY: 6 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  transition={{ delay: 140 }}
+                  style={styles.subtitle}
+                >
+                  Foco no que importa hoje
+                </MotiText>
+              </View>
+            </View>
+
+            {/* KPIs com stagger */}
+            <RNView style={styles.kpiRow}>
+              {[
+                { v: kpis.noMes.toString(), l: 'Este mês' },
+                { v: kpis.hoje.toString(), l: 'Hoje', t: 'green' as const },
+                { v: kpis.ativos.toString(), l: 'Ativos', t: 'lilac' as const },
+                { v: `${Math.round(kpis.taxa30d * 100)}%`, l: 'Taxa (30d)', t: 'warn' as const },
+              ].map((k, i) => (
+                <MotiView
+                  key={k.l}
+                  from={{ opacity: 0, translateY: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, translateY: 0, scale: 1 }}
+                  transition={{ delay: 100 + i * 60, damping: 14 }}
+                  style={{ flex: 1 }}
+                >
+                  <Kpi value={k.v} label={k.l} tone={k.t} C={C} />
+                </MotiView>
+              ))}
+            </RNView>
+
+            {/* busca */}
+            <MotiView
+              from={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'timing', duration: 220, delay: 120 }}
+              style={styles.searchWrap}
+            >
+              <Ionicons name="search" size={18} color={C.mutedText} />
+              <TextInput
+                placeholder="Pesquisar por nome..."
+                placeholderTextColor={C.mutedText}
+                value={query}
+                onChangeText={setQuery}
+                style={styles.searchInput}
+              />
+            </MotiView>
+
+            {/* chips */}
+            <RNView style={styles.chipsRow}>
+              <AnimatedChip text="Todos" active={tab === 'all'} onPress={() => setTab('all')} C={C} />
+              <AnimatedChip text="Para hoje" active={tab === 'today'} onPress={() => setTab('today')} C={C} />
+              <AnimatedChip text="Concluídos hoje" active={tab === 'done'} onPress={() => setTab('done')} C={C} />
+            </RNView>
+
+            {/* ordenar */}
+            <ScalePressable
+              onPress={() => {
+                const next: Record<typeof order, typeof order> = { streak: 'name', name: 'month', month: 'streak' };
+                setOrder(next[order]);
+              }}
+              activeScale={0.98}
+            >
+              <View style={styles.orderSelect}>
+                <Text style={styles.orderText}>
+                  Ordenar por: {order === 'streak' ? 'Sequência' : order === 'name' ? 'Nome' : 'Mês'}
+                </Text>
+                <MaterialIcons name="keyboard-arrow-down" size={20} color={C.mutedText} />
+              </View>
+            </ScalePressable>
           </MotiView>
 
-          {/* chips */}
-          <RNView style={styles.chipsRow}>
-            <AnimatedChip text="Todos" active={tab === 'all'} onPress={() => setTab('all')} C={C} />
-            <AnimatedChip text="Para hoje" active={tab === 'today'} onPress={() => setTab('today')} C={C} />
-            <AnimatedChip text="Concluídos hoje" active={tab === 'done'} onPress={() => setTab('done')} C={C} />
-          </RNView>
+          {/* Loading / erro */}
+          {loading && (
+            <RNView style={{ paddingVertical: 16, alignItems: 'center' }}>
+              <ActivityIndicator />
+            </RNView>
+          )}
+          {!!err && !loading && (
+            <RNView style={{ paddingVertical: 8 }}>
+              <Text style={{ color: '#ef4444' }}>{err}</Text>
+            </RNView>
+          )}
 
-          {/* ordenar */}
-          <ScalePressable
-            onPress={() => {
-              const next: Record<typeof order, typeof order> = { streak: 'name', name: 'month', month: 'streak' };
-              setOrder(next[order]);
-            }}
-            activeScale={0.98}
-          >
-            <View style={styles.orderSelect}>
-              <Text style={styles.orderText}>
-                Ordenar por: {order === 'streak' ? 'Sequência' : order === 'name' ? 'Nome' : 'Mês'}
-              </Text>
-              <MaterialIcons name="keyboard-arrow-down" size={20} color={C.mutedText} />
-            </View>
-          </ScalePressable>
-        </MotiView>
+          {/* Lista com AnimatePresence (enter/exit) */}
+          <AnimatePresence>
+            {!loading &&
+              filtered.map((h, idx) => (
+                <MotiView
+                  key={h.id}
+                  from={{ opacity: 0, translateY: 12 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  exit={{ opacity: 0, translateY: -12 }}
+                  transition={{ delay: 40 + idx * 24 }}
+                >
+                  <HabitCard
+                    habit={h}
+                    onToggle={() => onToggleToday(h.id)}
+                    onEdit={() => onEdit(h)}
+                    onDelete={() => onDelete(h)}
+                    C={C}
+                    styles={styles}
+                  />
+                </MotiView>
+              ))}
+          </AnimatePresence>
 
-        {/* Loading / erro */}
-        {loading && (
-          <RNView style={{ paddingVertical: 16, alignItems: 'center' }}>
-            <ActivityIndicator />
-          </RNView>
-        )}
-        {!!err && !loading && (
-          <RNView style={{ paddingVertical: 8 }}>
-            <Text style={{ color: '#ef4444' }}>{err}</Text>
-          </RNView>
-        )}
+          <RNView style={{ height: 80 }} />
+        </ScrollView>
 
-        {/* Lista com AnimatePresence (enter/exit) */}
-        <AnimatePresence>
-          {!loading &&
-            filtered.map((h, idx) => (
-              <MotiView
-                key={h.id}
-                from={{ opacity: 0, translateY: 12 }}
-                animate={{ opacity: 1, translateY: 0 }}
-                exit={{ opacity: 0, translateY: -12 }}
-                transition={{ delay: 40 + idx * 24 }}
-              >
-                <HabitCard
-                  habit={h}
-                  onToggle={() => onToggleToday(h.id)}
-                  onEdit={() => onEdit(h)}
-                  onDelete={() => onDelete(h)}
-                  C={C}
-                  styles={styles}
-                />
-              </MotiView>
-            ))}
-        </AnimatePresence>
-
-        <RNView style={{ height: 80 }} />
-      </ScrollView>
-
-      {/* FAB */}
-      <ScalePressable
-        onPress={() => {
-          if (!userId) {
-            Alert.alert('Sessão', 'Você não está logado.');
-            return;
-          }
-          setShowNewHabit(true);
-        }}
-        activeScale={0.94}
-      >
-        <MotiView
-          from={{ scale: 1, opacity: 0.95 }}
-          animate={{ scale: 1.02, opacity: 1 }}
-          transition={{ loop: true, type: 'timing', duration: 1400 }}
-          style={styles.fab}
+        {/* FAB */}
+        <ScalePressable
+          onPress={() => {
+            if (!userId) {
+              Alert.alert('Sessão', 'Você não está logado.');
+              return;
+            }
+            setShowNewHabit(true);
+          }}
+          activeScale={0.94}
         >
-          <Ionicons name="add" size={26} color={C.primaryText} />
-          <Text style={styles.fabText}>Novo hábito</Text>
-        </MotiView>
-      </ScalePressable>
+          <MotiView
+            from={{ scale: 1, opacity: 0.95 }}
+            animate={{ scale: 1.02, opacity: 1 }}
+            transition={{ loop: true, type: 'timing', duration: 1400 }}
+            style={styles.fab}
+          >
+            <Ionicons name="add" size={26} color={C.primaryText} />
+            <Text style={styles.fabText}>Novo hábito</Text>
+          </MotiView>
+        </ScalePressable>
 
-      {userId && (
-        <NewHabitModal
-          visible={showNewHabit}
-          onClose={() => setShowNewHabit(false)}
-          userId={userId}
-          onCreated={handleHabitCreated}
+        {userId && (
+          <NewHabitModal
+            visible={showNewHabit}
+            onClose={() => setShowNewHabit(false)}
+            userId={userId}
+            onCreated={handleHabitCreated}
+          />
+        )}
+
+        <EditHabitModal
+          visible={!!editHabit}
+          onClose={() => setEditHabit(null)}
+          habit={editHabit}
+          onUpdated={updated => {
+            setHabits(prev => prev.map(h => (h.id === updated.id ? updated : h)));
+          }}
         />
-      )}
-
-      <EditHabitModal
-        visible={!!editHabit}
-        onClose={() => setEditHabit(null)}
-        habit={editHabit}
-        onUpdated={updated => {
-          setHabits(prev => prev.map(h => (h.id === updated.id ? updated : h)));
-        }}
-      />
-    </View>
+      </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -396,14 +404,14 @@ function Kpi({
         ? '#ecfdf5'
         : '#0f1f19'
       : tone === 'warn'
-      ? C.background === '#FFFFFF'
-        ? '#fffbeb'
-        : '#2b1e07'
-      : tone === 'lilac'
-      ? C.background === '#FFFFFF'
-        ? '#f5f3ff'
-        : '#191827'
-      : C.chipBg;
+        ? C.background === '#FFFFFF'
+          ? '#fffbeb'
+          : '#2b1e07'
+        : tone === 'lilac'
+          ? C.background === '#FFFFFF'
+            ? '#f5f3ff'
+            : '#191827'
+          : C.chipBg;
 
   return (
     <MotiView
@@ -484,93 +492,130 @@ function HabitCard({
   const pct = Math.max(0, Math.min(1, habit.monthProgressPct));
   const isDoneToday = !habit.dueToday && habit.lastDate === todayStr();
 
+  // swipe control
+  const swipeRef = useRef<Swipeable>(null);
+  const closeSwipe = () => swipeRef.current?.close();
+  
+  const LeftAction = () => (
+    <RNView style={swipeStyles.actionsWrap}>
+      <ScalePressable
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+          closeSwipe();
+          onEdit(habit);
+        }}
+      >
+        <RNView style={[swipeStyles.actionBtn, { backgroundColor: C.card, borderColor: C.border, borderWidth: 1 }]}>
+          <Feather name="edit-2" size={18} color={C.mutedText} />
+          <Text style={[swipeStyles.actionText, { color: C.text }]}>Editar</Text>
+        </RNView>
+      </ScalePressable>
+    </RNView>
+  );
+
+  const RightActions = () => (
+    <RNView style={swipeStyles.actionsWrap}>
+      <ScalePressable
+        onPress={() => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => { });
+          closeSwipe();
+          onDelete(habit);
+        }}
+      >
+        <RNView style={[swipeStyles.actionBtn, { backgroundColor: '#2b0d0d', borderColor: '#7f1d1d', borderWidth: 1 }]}>
+          <Feather name="trash-2" size={18} color="#ef4444" />
+          <Text style={[swipeStyles.actionText, { color: '#fca5a5' }]}>Excluir</Text>
+        </RNView>
+      </ScalePressable>
+    </RNView>
+  );
+
   return (
-    <MotiView
-      from={{ opacity: 0.9, translateY: 8 }}
-      animate={{ opacity: 1, translateY: 0 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      transition={{ type: 'timing', duration: 240 }}
-      style={styles.habitCard}
+    <Swipeable
+      renderRightActions={RightActions}
+      renderLeftActions={LeftAction}
+      overshootRight={false}
+      overshootLeft={false}
+      friction={2}
+      leftThreshold={40}
+      rightThreshold={40}              // <- essencialmente “nunca abre”
+    // onSwipeableLeftOpen={() => closeSwipe()} // <- safety: auto-fecha se abrir
     >
-      <RNView style={styles.habitHeader}>
-        <MotiText from={{ opacity: 0, translateY: 4 }} animate={{ opacity: 1, translateY: 0 }} style={styles.habitTitle}>
-          {habit.name}
-        </MotiText>
+      <MotiView
+        from={{ opacity: 0.9, translateY: 8 }}
+        animate={{ opacity: 1, translateY: 0 }}
+        exit={{ opacity: 0, scale: 0.98 }}
+        transition={{ type: 'timing', duration: 240 }}
+        style={styles.habitCard}
+      >
+        <RNView style={styles.habitHeader}>
+          <MotiText from={{ opacity: 0, translateY: 4 }} animate={{ opacity: 1, translateY: 0 }} style={styles.habitTitle}>
+            {habit.name}
+          </MotiText>
 
-        {habit.dueToday && (
+          {habit.dueToday && (
+            <MotiView
+              from={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'timing', duration: 200 }}
+              style={styles.dueTodayBadge}
+            >
+              <Ionicons name="time-outline" size={14} color={C.warn} />
+              <Text style={[styles.dueTodayText, { color: C.warn }]}>fazer hoje</Text>
+            </MotiView>
+          )}
+        </RNView>
+
+        {/* métricas */}
+        <RNView style={styles.habitMetrics}>
+          <Metric value={habit.monthCount} label="no mês" C={C} />
+          <Metric value={habit.streak} label="sequência" icon="flame" C={C} />
+          <Metric value={habit.total} label="total" C={C} />
+        </RNView>
+
+        {/* progresso animado */}
+        <RNView style={styles.progressWrap}>
           <MotiView
-            from={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'timing', duration: 200 }}
-            style={styles.dueTodayBadge}
+            from={{ width: '0%' }}
+            animate={{ width: `${pct * 100}%` }}
+            transition={{ type: 'timing', duration: 500 }}
+            style={[styles.progressBar]}
+          />
+        </RNView>
+        <Text style={styles.progressInfo}>Progresso no mês: {Math.round(pct * 100)}% · última: {habit.lastDate}</Text>
+
+        {/* ações principais (sem editar/excluir aqui) */}
+        <RNView style={styles.actionsRow}>
+          <ScalePressable onPress={onToggle} activeScale={0.96}>
+            <MotiView
+              from={{ opacity: 0.9, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'timing', duration: 160 }}
+              style={[styles.primaryBtn, isDoneToday && { backgroundColor: C.good }]}
+            >
+              <MotiText from={{ opacity: 0 }} animate={{ opacity: 1 }} style={styles.primaryBtnText}>
+                {isDoneToday ? 'Desfazer hoje' : 'Concluir hoje'}
+              </MotiText>
+            </MotiView>
+          </ScalePressable>
+
+          <ScalePressable
+            onPress={() =>
+              router.push({
+                pathname: '/habit/[id]/calendar',
+                params: { id: habit.id, name: habit.name },
+              })
+            }
+            activeScale={0.96}
           >
-            <Ionicons name="time-outline" size={14} color={C.warn} />
-            <Text style={[styles.dueTodayText, { color: C.warn }]}>fazer hoje</Text>
-          </MotiView>
-        )}
-      </RNView>
-
-      {/* métricas */}
-      <RNView style={styles.habitMetrics}>
-        <Metric value={habit.monthCount} label="no mês" C={C} />
-        <Metric value={habit.streak} label="sequência" icon="flame" C={C} />
-        <Metric value={habit.total} label="total" C={C} />
-      </RNView>
-
-      {/* progresso animado */}
-      <RNView style={styles.progressWrap}>
-        <MotiView
-          from={{ width: '0%' }}
-          animate={{ width: `${pct * 100}%` }}
-          transition={{ type: 'timing', duration: 500 }}
-          style={[styles.progressBar]}
-        />
-      </RNView>
-      <Text style={styles.progressInfo}>Progresso no mês: {Math.round(pct * 100)}% · última: {habit.lastDate}</Text>
-
-      {/* ações */}
-      <RNView style={styles.actionsRow}>
-        <ScalePressable onPress={onToggle} activeScale={0.96}>
-          <MotiView
-            from={{ opacity: 0.9, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'timing', duration: 160 }}
-            style={[styles.primaryBtn, isDoneToday && { backgroundColor: C.good }]}
-          >
-            <MotiText from={{ opacity: 0 }} animate={{ opacity: 1 }} style={styles.primaryBtnText}>
-              {isDoneToday ? 'Desfazer hoje' : 'Concluir hoje'}
-            </MotiText>
-          </MotiView>
-        </ScalePressable>
-
-        <ScalePressable
-          onPress={() =>
-            router.push({
-              pathname: '/habit/[id]/calendar',
-              params: { id: habit.id, name: habit.name },
-            })
-          }
-          activeScale={0.96}
-        >
-          <MotiView from={{ opacity: 0.9, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} style={styles.ghostBtn}>
-            <Ionicons name="calendar-outline" size={18} color={C.mutedText} />
-            <Text style={styles.ghostBtnText}>Calendário</Text>
-          </MotiView>
-        </ScalePressable>
-
-        <ScalePressable onPress={() => onEdit(habit)} activeScale={0.9}>
-          <MotiView from={{ opacity: 0.9, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} style={styles.iconBtn}>
-            <Feather name="edit-2" size={18} color={C.mutedText} />
-          </MotiView>
-        </ScalePressable>
-
-        <ScalePressable onPress={() => onDelete(habit)} activeScale={0.9}>
-          <MotiView from={{ opacity: 0.9, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} style={styles.iconBtn}>
-            <Feather name="trash-2" size={18} color="#ef4444" />
-          </MotiView>
-        </ScalePressable>
-      </RNView>
-    </MotiView>
+            <MotiView from={{ opacity: 0.9, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} style={styles.ghostBtn}>
+              <Ionicons name="calendar-outline" size={18} color={C.mutedText} />
+              <Text style={styles.ghostBtnText}>Calendário</Text>
+            </MotiView>
+          </ScalePressable>
+        </RNView>
+      </MotiView>
+    </Swipeable>
   );
 }
 
@@ -685,7 +730,7 @@ function createStyles(C: typeof Colors.light) {
     progressBar: { height: '100%', backgroundColor: C.primary },
     progressInfo: { marginTop: 6, color: C.mutedText, fontSize: 12 },
 
-    actionsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+    actionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
 
     primaryBtn: {
       flex: 1,
@@ -697,7 +742,7 @@ function createStyles(C: typeof Colors.light) {
       flexDirection: 'row',
       gap: 8,
     },
-    primaryBtnText: { color: C.primaryText, fontWeight: '700', fontSize: 14 },
+    primaryBtnText: { color: C.primaryText, fontWeight: '700', fontSize: 14, width: 120, textAlign: 'center' },
 
     ghostBtn: {
       flex: 1,
@@ -710,6 +755,7 @@ function createStyles(C: typeof Colors.light) {
       flexDirection: 'row',
       gap: 8,
       backgroundColor: C.background,
+      width: 120
     },
     ghostBtnText: { color: C.mutedText, fontWeight: '700' },
 
@@ -740,3 +786,40 @@ function createStyles(C: typeof Colors.light) {
     fabText: { color: C.primaryText, fontWeight: '800' },
   });
 }
+
+/* estilos das ações de swipe */
+const swipeStyles = StyleSheet.create({
+  actionsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+  },
+  actionBtn: {
+    width: 96,
+    height: '90%',
+    borderRadius: 12,
+    marginVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  actionText: { fontWeight: '700', fontSize: 12 },
+
+  leftWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  leftBtn: {
+    width: 140,
+    height: '90%',
+    borderRadius: 12,
+    marginVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  leftText: { fontWeight: '800', fontSize: 12 },
+});

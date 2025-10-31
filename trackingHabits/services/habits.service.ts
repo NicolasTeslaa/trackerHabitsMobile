@@ -7,13 +7,6 @@ const TOKEN_KEY = "@auth_token";
 const DEFAULT_TIMEOUT_MS = 15000;
 
 
-// --- acrescente no topo se ainda não existir ---
-export type HabitDTO = {
-  id: string;
-  name: string;
-  createdAt: string;       // ISO
-  completedDates: string[]; // "yyyy-MM-dd"
-};
 
 // Retorna o DTO completo (com completedDates)
 export async function getHabitCalendar(habitId: string): Promise<HabitDTO> {
@@ -205,6 +198,16 @@ function computeStreak(doneSet: Set<string>): number {
   }
   return count;
 }
+
+// --- acrescente no topo se ainda não existir ---
+export type HabitDTO = {
+  id: string;
+  name: string;
+  createdAt: string;       // ISO
+  completedDates: string[]; // "yyyy-MM-dd"
+};
+
+
 
 // ======================= API SERVICE =======================
 

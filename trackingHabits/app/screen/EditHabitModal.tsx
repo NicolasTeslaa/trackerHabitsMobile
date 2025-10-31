@@ -1,17 +1,22 @@
 // src/app/screen/EditHabitModal.tsx
 import Colors from "@/constants/Colors";
 import { updateHabit, type Habit } from "@/services/habits.service";
+import { MotiText, MotiView } from "moti";
+import { MotiPressable } from "moti/interactions";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
-  Pressable,
+  Platform,
+  ScrollView,
   StyleSheet,
-  Text,
   TextInput,
+  useColorScheme,
   View,
 } from "react-native";
+import "react-native-reanimated";
 
 export default function EditHabitModal({
   visible,
@@ -22,11 +27,11 @@ export default function EditHabitModal({
   visible: boolean;
   onClose: () => void;
   habit: Habit | null;
-  onUpdated: (updated: Habit) => void; // <— envia o updated
+  onUpdated: (updated: Habit) => void;
 }) {
-  const scheme = "light";
+  const scheme = useColorScheme() ?? "light";
   const C = Colors[scheme];
-  const styles = createStyles(C);
+  const S = styles(C);
 
   const [name, setName] = useState(habit?.name || "");
   const [loading, setLoading] = useState(false);
@@ -40,7 +45,7 @@ export default function EditHabitModal({
 
     const trimmed = name.trim();
     if (!trimmed) {
-      Alert.alert("Aviso", "O nome do hábito não pode estar vazio.");
+      Alert.alert("Editar hábito", "O nome do hábito não pode estar vazio.");
       return;
     }
     if (trimmed === habit.name) {
@@ -51,8 +56,7 @@ export default function EditHabitModal({
     try {
       setLoading(true);
       await updateHabit(habit.id, { name: trimmed });
-      // atualiza imediatamente no front sem novo fetch
-      onUpdated({ ...habit, name: trimmed });
+      onUpdated({ ...habit, name: trimmed }); // atualiza no front sem refetch
       onClose();
     } catch (e: any) {
       Alert.alert("Erro", e?.message || "Falha ao atualizar o hábito.");
@@ -63,96 +67,172 @@ export default function EditHabitModal({
 
   return (
     <Modal
-      visible={visible}
-      animationType="slide"
       transparent
-      // dica: no Android melhora visual com status bar
+      visible={visible}
+      animationType="none"
+      onRequestClose={onClose}
       statusBarTranslucent
+      hardwareAccelerated
     >
-      <View style={styles.overlay}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>Editar hábito</Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Novo nome do hábito"
-            placeholderTextColor={C.mutedText}
-            value={name}
-            onChangeText={setName}
-          />
-
-          <View style={styles.buttons}>
-            <Pressable
-              style={[styles.btn, { backgroundColor: C.border }]}
-              onPress={onClose}
-              disabled={loading}
+      <KeyboardAvoidingView
+        style={S.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.select({ ios: 0, android: 0 })}
+      >
+        <View style={S.backdrop}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={S.center}>
+            <MotiView
+              from={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", damping: 16, stiffness: 180 }}
+              style={S.card}
             >
-              <Text style={[styles.btnText, { color: C.text }]}>Cancelar</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.btn, { backgroundColor: C.primary }]}
-              onPress={handleSave}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={C.primaryText} />
-              ) : (
-                <Text style={[styles.btnText, { color: C.primaryText }]}>
-                  Salvar
-                </Text>
-              )}
-            </Pressable>
-          </View>
+              <MotiText
+                from={{ translateY: -8, opacity: 0 }}
+                animate={{ translateY: 0, opacity: 1 }}
+                transition={{ type: "timing", duration: 240 }}
+                style={S.title}
+              >
+                Editar Hábito
+              </MotiText>
+
+              <TextInput
+                placeholder="Novo nome do hábito"
+                placeholderTextColor={C.mutedText}
+                value={name}
+                onChangeText={setName}
+                style={S.input}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={handleSave}
+              />
+
+              <View style={S.row}>
+                <MotiPressable
+                  style={S.btnGhost}
+                  onPress={onClose}
+                  disabled={loading}
+                  animate={({ hovered, pressed }) => {
+                    "worklet";
+                    return {
+                      scale: pressed ? 0.95 : hovered ? 1.05 : 1,
+                      opacity: pressed ? 0.7 : 1,
+                    };
+                  }}
+                >
+                  <MotiText style={S.btnGhostText}>Cancelar</MotiText>
+                </MotiPressable>
+
+                <MotiPressable
+                  style={S.btnPrimary}
+                  onPress={handleSave}
+                  disabled={loading}
+                  animate={({ pressed }) => {
+                    "worklet";
+                    return {
+                      scale: pressed ? 0.97 : 1,
+                      opacity: pressed ? 0.9 : 1,
+                    };
+                  }}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={C.primaryText} />
+                  ) : (
+                    <MotiText
+                      from={{ opacity: 0, translateY: 6 }}
+                      animate={{ opacity: 1, translateY: 0 }}
+                      transition={{ delay: 120, duration: 220 }}
+                      style={S.btnPrimaryText}
+                    >
+                      Salvar
+                    </MotiText>
+                  )}
+                </MotiPressable>
+              </View>
+            </MotiView>
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-function createStyles(C: typeof Colors.light) {
+function styles(C: typeof Colors.light) {
   return StyleSheet.create({
-    overlay: {
+    flex: { flex: 1 },
+    backdrop: {
       flex: 1,
+      backgroundColor: "rgba(0,0,0,0.6)",
+    },
+    center: {
+      flexGrow: 1,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: "rgba(0,0,0,0.5)",
+      padding: 20,
     },
-    modal: {
-      width: "85%",
+    card: {
+      width: "100%",
       backgroundColor: C.background,
-      borderRadius: 14,
-      padding: 16,
+      borderRadius: 16,
+      padding: 22,
+      borderWidth: 1,
+      borderColor: C.border,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      elevation: 8,
+      overflow: "visible",
     },
     title: {
-      fontSize: 18,
-      fontWeight: "700",
-      marginBottom: 12,
+      fontSize: 22,
+      fontWeight: "800",
       color: C.text,
+      marginBottom: 16,
       textAlign: "center",
     },
     input: {
       borderWidth: 1,
       borderColor: C.border,
-      borderRadius: 8,
-      padding: 10,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
       color: C.text,
-      marginBottom: 16,
+      marginBottom: 20,
+      fontSize: 16,
     },
-    buttons: {
+    row: {
       flexDirection: "row",
       justifyContent: "space-between",
-      gap: 10,
+      alignItems: "center",
+      columnGap: 12,
+      marginTop: 8,
     },
-    btn: {
+    btnGhost: {
       flex: 1,
-      height: 44,
-      borderRadius: 8,
+      height: 46,
       alignItems: "center",
       justifyContent: "center",
+      borderRadius: 10,
+      backgroundColor: C.card,
+      borderWidth: 1,
+      borderColor: C.border,
+      width: 100,
     },
-    btnText: {
-      fontWeight: "700",
-      fontSize: 14,
+    btnGhostText: { color: C.mutedText, fontWeight: "600", fontSize: 15 },
+    btnPrimary: {
+      flex: 1,
+      height: 46,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 10,
+      backgroundColor: C.primary,
+      shadowColor: C.primary,
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+      elevation: 5,
+      width: 100,
     },
+    btnPrimaryText: { color: C.primaryText, fontWeight: "700", fontSize: 15 },
   });
 }

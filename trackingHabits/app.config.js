@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "SeuApp",
+    name: "Trackeador de Habitos",
     slug: "seu-app",
     version: "1.0.0",
     extra: {
